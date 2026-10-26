@@ -1,0 +1,13 @@
+# Only the page and the files it references are published.
+.claude/
+tools/
+img/raw/
+# Images the page no longer uses.
+img/backyard-worlds.jpg
+img/celldive.jpg
+img/celldive.webp
+img/cellmap-flow.jpg
+img/cinemap.jpg
+img/janelia-it.jpg
+img/mars.jpg
+img/mesh-n-bone.jpg

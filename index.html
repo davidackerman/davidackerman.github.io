@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>David Ackerman</title>
+<meta name="description" content="David Ackerman, scientific software engineer at HHMI Janelia Research Campus: tools for large 3D images, and agents and LLMs for science.">
+<meta name="color-scheme" content="dark">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@700;900&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,600;0,700;1,400&family=Martian+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Layout: one column laid on a 12px chunk grid; the Game of Life behind it lives on the same grid,
+     project frames carry region-of-interest corner brackets, and commit history uses GitHub's greens. */
+  :root {
+    color-scheme: dark;
+    --ground: #0b0e0c;
+    --ink: #e3e8e3;
+    --ink-2: #a8b2aa;
+    --ink-3: #66716a;
+    --line: #1d241f;
+    --cell-0: #121714;
+    --g1: #0e4429;
+    --g2: #006d32;
+    --g3: #26a641;
+    --g4: #39d353;
+    --g5: #7ee787;
+    --a1: #1f7a3a;
+    --a2: #2ea043;
+    --a3: #3fb950;
+    --a4: #7ee787;
+    --display: "Doto", "Martian Mono", ui-monospace, monospace;
+    --body: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Martian Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    --unit: 12px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; background: var(--ground); }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--body); font-size: 17px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--ground); }
+  #life { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+  main {
+    position: relative; z-index: 1; max-width: 1080px; margin: 0 auto;
+    padding-block: calc(var(--unit) * 7) calc(var(--unit) * 8);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  a { color: inherit; text-decoration: none; }
+  p a, li a {
+    color: var(--ink); text-decoration: underline; text-decoration-color: var(--g2);
+    text-decoration-thickness: 2px; text-underline-offset: 3px;
+  }
+  p a:hover, li a:hover { color: var(--g4); text-decoration-color: var(--g4); }
+  a:focus-visible { outline: 2px solid var(--g4); outline-offset: 3px; }
+
+  /* Header */
+  .intro { max-width: none; }
+  .about { max-width: 74ch; }
+  h1 {
+    font-family: var(--display); font-weight: 900; font-size: clamp(2.3rem, 9.6vw, 7.6rem);
+    line-height: 1; letter-spacing: 0.01em; margin: 0; text-wrap: balance;
+  }
+  .role {
+    font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--ink-2); margin: 20px 0 30px;
+  }
+  .intro p { font-size: 1.22rem; line-height: 1.55; margin: 0 0 16px; color: var(--ink); }
+  .contact { margin-top: 22px; display: flex; gap: 20px; font-family: var(--mono); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .contact a { color: var(--ink); border-bottom: 2px solid var(--g2); padding-bottom: 2px; }
+  .contact a:hover { color: var(--g4); border-color: var(--g4); }
+
+  /* Commit strip: one square per month, shaded like a GitHub contribution graph */
+  .strip-wrap {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    margin: calc(var(--unit) * 4) -16px 0; padding: 12px 16px 10px;
+    background: color-mix(in srgb, var(--ground) 90%, transparent);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    border-bottom: 1px solid transparent; transition: border-color 0.2s;
+  }
+  .strip-wrap.stuck { border-bottom-color: var(--line); }
+  .jump { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 10px; font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  .jump a { color: var(--ink-2); padding-bottom: 2px; border-bottom: 2px solid transparent; }
+  .jump a:hover, .jump a.here { color: var(--ink); border-color: var(--g3); }
+  section, .tile { scroll-margin-top: 120px; }
+  .strip-caption { font-family: var(--mono); font-size: 0.68rem; color: var(--ink-3); margin-bottom: 8px; min-height: 1.5em; letter-spacing: 0.02em; }
+  .strip-caption b { color: var(--g4); font-weight: 500; }
+  .strip { display: grid; gap: 2px; height: 11px; }
+  .strip i { display: block; background: var(--cell-0); border-radius: 2px; transition: background-color 0.15s; }
+  .strip-years { position: relative; height: 14px; font-family: var(--mono); font-size: 0.62rem; color: var(--ink-3); margin-top: 5px; }
+  .strip-years span { position: absolute; transform: translateX(-50%); }
+
+  /* Sections */
+  section { margin-top: calc(var(--unit) * 8); }
+  h2 {
+    font-family: var(--display); font-weight: 900; font-size: clamp(1.6rem, 3.6vw, 2.1rem);
+    line-height: 1.1; margin: 0 0 8px; letter-spacing: 0.01em; text-wrap: balance;
+  }
+  .lede { color: var(--ink-2); margin: 0 0 30px; max-width: 64ch; }
+  h2 + .grid, h2 + ul.list { margin-top: 26px; }
+
+  /* Project tiles */
+  .grid { display: grid; gap: 40px 32px; }
+  .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 36px 24px; }
+  .tile { min-width: 0; }
+  .tile .media {
+    --bracket: var(--ink-3);
+    display: block; position: relative; aspect-ratio: 16 / 10; max-width: 100%;
+    border: 1px solid var(--line); background: #000;
+  }
+  .tile .media::after {
+    content: ""; position: absolute; inset: -7px; pointer-events: none;
+    --b: linear-gradient(var(--bracket), var(--bracket));
+    background:
+      var(--b) top left / 14px 2px no-repeat, var(--b) top left / 2px 14px no-repeat,
+      var(--b) top right / 14px 2px no-repeat, var(--b) top right / 2px 14px no-repeat,
+      var(--b) bottom left / 14px 2px no-repeat, var(--b) bottom left / 2px 14px no-repeat,
+      var(--b) bottom right / 14px 2px no-repeat, var(--b) bottom right / 2px 14px no-repeat;
+    transition: inset 0.2s ease;
+  }
+  .tile:hover .media, .tile.active .media { --bracket: var(--g4); }
+  .tile:hover .media::after { inset: -9px; }
+  .tile .media picture { display: contents; }
+  .tile .media img, .tile .media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile h3 { font-size: 1.12rem; font-weight: 700; margin: 18px 0 4px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .tile h3 .years, ul.list li .years { font-family: var(--mono); font-size: 0.66rem; font-weight: 400; color: var(--ink-3); letter-spacing: 0.02em; }
+  .tile p { margin: 0 0 10px; color: var(--ink-2); font-size: 0.98rem; }
+  .tile .links { display: flex; gap: 18px; flex-wrap: wrap; font-family: var(--mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .tile .links a { color: var(--ink); border-bottom: 2px solid var(--g2); padding-bottom: 1px; }
+  .tile .links a:hover { color: var(--g4); border-color: var(--g4); }
+  .tile.active h3 > a { color: var(--g4); }
+  .grid.four .tile p { font-size: 0.94rem; }
+
+  /* Text lists */
+  ul.list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .grid + ul.list { margin-top: 44px; }
+  ul.list li {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "nm yr" "ds ds";
+    gap: 4px 20px; padding: 18px 0; border-bottom: 1px solid var(--line); align-items: baseline;
+  }
+  ul.list .nm { grid-area: nm; font-size: 1.12rem; }
+  ul.list .ds { grid-area: ds; color: var(--ink-2); font-size: 1rem; max-width: 70ch; }
+  ul.list .ds::first-letter { text-transform: uppercase; }
+  ul.list li .years { grid-area: yr; white-space: nowrap; }
+  .tag { font-family: var(--mono); font-size: 0.6rem; font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--line); padding: 2px 6px; margin-left: 6px; vertical-align: 2px; white-space: nowrap; }
+  .tile h3 .tag { margin-left: 0; }
+  ul.list li b { color: var(--ink); font-weight: 700; }
+  ul.list li b a { color: var(--ink); text-decoration: none; }
+  ul.list li b a:hover { color: var(--g4); }
+  ul.list li.active b a { color: var(--g4); }
+
+  footer { margin-top: calc(var(--unit) * 8); font-family: var(--mono); font-size: 0.68rem; color: var(--ink-3); letter-spacing: 0.04em; }
+
+  @media (max-width: 900px) {
+    .grid.three, .grid.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 600px) {
+    body { font-size: 16px; }
+    .intro p { font-size: 1.08rem; }
+    main { padding-block: calc(var(--unit) * 4) calc(var(--unit) * 6); }
+    .grid.two, .grid.three, .grid.four { grid-template-columns: minmax(0, 1fr); }
+    .strip { gap: 1px; }
+    .strip-years span.minor { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tile .media::after, .strip i { transition: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="life" aria-hidden="true"></canvas>
+<main>
+
+<header class="intro">
+  <h1>David Ackerman</h1>
+  <p class="role">Scientific software engineer · HHMI Janelia Research Campus</p>
+  <div class="about">
+  <p>Hi! I'm a scientific software engineer who likes solving whatever problems come my way, whether that means building new tools or finding creative and new uses for existing ones.</p>
+  <p>Lately I've been experimenting with agentic approaches to generate ground-truth data and to proofread image segmentations. I've also been building LLMs into scientific software to bring visualization and analysis straight to the scientist.</p>
+  </div>
+  <p class="contact">
+    <a href="https://github.com/davidackerman">GitHub</a>
+    <!-- <a href="mailto:YOUR_EMAIL">Email</a> -->
+    <!-- <a href="https://www.linkedin.com/in/YOUR_HANDLE">LinkedIn</a> -->
+    <!-- <a href="resume.pdf">Résumé</a> -->
+  </p>
+</header>
+
+<div class="strip-wrap" id="strip-wrap">
+  <nav class="jump" aria-label="Sections"><a href="#featured">Featured</a><a href="#agents">Agents and LLMs</a><a href="#tools">More tools</a><a href="#earlier">Earlier at Janelia</a><a href="#side">Side projects</a></nav>
+  <div class="strip-caption" id="strip-caption" aria-hidden="true"></div>
+  <div class="strip" id="strip" aria-hidden="true"></div>
+  <div class="strip-years" id="strip-years" aria-hidden="true"></div>
+</div>
+
+<section id="featured">
+  <h2>Featured</h2>
+  <p class="lede">Tools I've built for easily processing huge microscopy volumes.</p>
+  <div class="grid three">
+    <article class="tile" data-tl="cellmap-flow">
+      <a class="media" href="https://janelia-cellmap.github.io/cellmap-flow/app/" aria-label="cellmap-flow live app">
+        <video src="media/cellmap-flow.mp4" poster="media/cellmap-flow-poster.jpg" muted loop playsinline autoplay preload="metadata"></video>
+      </a>
+      <h3><a href="https://github.com/janelia-cellmap/cellmap-flow">cellmap-flow</a><span class="years"></span></h3>
+      <p>Run deep-learning models on large 3D images as you browse them in Neuroglancer, tune the post-processing live, and run interactive fine-tuning to improve performance. Runs on a GPU cluster or entirely in the browser.</p>
+      <div class="links"><a href="https://janelia-cellmap.github.io/cellmap-flow/app/">Try it in your browser</a><a href="https://github.com/janelia-cellmap/cellmap-flow">Code</a></div>
+    </article>
+
+    <article class="tile" id="tile-mesh-n-bone" data-tl="mesh-n-bone">
+      <a class="media" href="https://github.com/janelia-cellmap/mesh-n-bone" aria-label="mesh-n-bone">
+        <video src="media/mesh-n-bone.mp4" poster="media/mesh-n-bone-poster.jpg" muted loop playsinline autoplay preload="metadata"></video>
+      </a>
+      <h3><a href="https://github.com/janelia-cellmap/mesh-n-bone">mesh-n-bone</a><span class="years"></span></h3>
+      <p>Multiresolution, sharded Neuroglancer meshes with per-object properties, straight from a segmentation.</p>
+      <div class="links"><a href="https://github.com/janelia-cellmap/mesh-n-bone">Code</a></div>
+    </article>
+
+    <article class="tile" id="tile-cellmap-analyze" data-tl="cellmap-analyze">
+      <a class="media" href="https://github.com/janelia-cellmap/cellmap-analyze" aria-label="cellmap-analyze">
+        <img src="img/cellmap-analyze.jpg" alt="cellmap-analyze measurements for 31 mitochondria in a public HeLa cell: volume, surface area, skeleton length, branch count and ER-contact fraction per object, with a surface-area-versus-volume plot" loading="lazy">
+      </a>
+      <h3><a href="https://github.com/janelia-cellmap/cellmap-analyze">cellmap-analyze</a><span class="years"></span></h3>
+      <p>Measurements on segmentations too big for memory: connected components, hole filling, morphology and skeletons, computed block by block on a cluster.</p>
+      <div class="links"><a href="https://github.com/janelia-cellmap/cellmap-analyze">Code</a></div>
+    </article>
+  </div>
+</section>
+
+<section id="agents">
+  <h2>Agents and LLMs</h2>
+  <div class="grid two">
+    <article class="tile" data-tl="Tourguide">
+      <a class="media" href="https://github.com/davidackerman/tourguide" aria-label="Tourguide">
+        <img src="img/tourguide.jpg" alt="A Tourguide workspace: Neuroglancer with segmented mitochondria, a table of measurements and a plot pushed in by an agent" loading="lazy">
+      </a>
+      <h3><a href="https://github.com/davidackerman/tourguide">Tourguide</a><span class="years"></span></h3>
+      <p>A 3D microscopy workspace that a coding agent drives. Claude Code or Cursor runs the analysis and pushes tables, plots, meshes and camera moves into Neuroglancer through an MCP server, while the scientist watches and steers.</p>
+      <div class="links"><a href="https://github.com/davidackerman/tourguide">Code</a></div>
+    </article>
+
+    <article class="tile" data-tl="proofreader-mcp">
+      <a class="media" href="https://github.com/janelia-cellmap/proofreader-mcp" aria-label="proofreader-mcp">
+        <img src="img/proofreader.jpg" alt="proofreader-mcp review page ranking segmented objects by likely error" loading="lazy">
+      </a>
+      <h3><a href="https://github.com/janelia-cellmap/proofreader-mcp">proofreader-mcp</a><span class="years"></span></h3>
+      <p>An MCP server for proofreading segmentations with an agent. An LLM looks at renders of thousands of objects, ranks the ones most likely to be wrong, and hands them to a person in priority order.</p>
+      <div class="links"><a href="https://github.com/janelia-cellmap/proofreader-mcp">Code</a></div>
+    </article>
+
+    <article class="tile" data-tl="ask-to-mask">
+      <a class="media" href="https://github.com/janelia-cellmap/ask-to-mask" aria-label="ask-to-mask">
+        <img src="img/ask-to-mask.jpg" alt="Four panels: an annotated example shown to the model, a new HeLa electron-microscopy image, the model's mitochondria mask, and the ground truth, scoring Dice 0.82" loading="lazy">
+      </a>
+      <h3><a href="https://github.com/janelia-cellmap/ask-to-mask">ask-to-mask</a><span class="years"></span></h3>
+      <p>Organelle masks from electron-microscopy images with vision-language and image-editing models (Gemini, Qwen2.5-VL, Molmo 2, Gemma 3, FLUX.1 Kontext, FLUX.2) or SAM3, refined in an agentic loop.</p>
+      <div class="links"><a href="https://github.com/janelia-cellmap/ask-to-mask">Code</a></div>
+    </article>
+
+    <article class="tile" data-tl="ANNA">
+      <a class="media" href="https://github.com/davidackerman/ANNA" aria-label="ANNA">
+        <img src="img/anna.jpg" alt="ANNA's investigation of a mitochondrion: its 3D mesh and the EM slice through a narrow bridge, beside the agent's report concluding the bridge is biological, not a merge error" loading="lazy">
+      </a>
+      <h3><a href="https://github.com/davidackerman/ANNA">ANNA</a><span class="years"></span></h3>
+      <p>A vision agent that proofreads segmentations by orbiting each object in Neuroglancer and judging what it sees.</p>
+      <div class="links"><a href="https://github.com/davidackerman/ANNA">Code</a></div>
+    </article>
+  </div>
+  <ul class="list">
+    <li data-tl="SAM3M"><span class="nm"><b><a href="https://github.com/davidackerman/sam3m">SAM3M</a></b> and <b><a href="https://github.com/davidackerman/dinov3_playground">DINOv3 playground</a></b></span><span class="ds">adapting foundation models to 3D organelle segmentation on the CellMap Segmentation Challenge.</span><span class="years"></span></li>
+  </ul>
+</section>
+
+<section id="tools">
+  <h2>More tools</h2>
+  <div class="grid two">
+    <article class="tile" data-tl="chunkmirage">
+      <a class="media" href="https://janeliascicomp.github.io/chunkmirage/browser/" aria-label="chunkmirage demos">
+        <img src="img/chunkmirage.jpg" alt="Six chunkmirage demos computed in the browser: the Mandelbulb fractal, burn severity after the Los Angeles fires, the Moon's south pole, ocean temperature, a solar flare and tracked cell nuclei" loading="lazy">
+      </a>
+      <h3><a href="https://github.com/JaneliaSciComp/chunkmirage">chunkmirage</a><span class="years"></span></h3>
+      <p>Browse a computation as if it were a stored dataset: each chunk is computed when a viewer asks for it, through a pipeline you can edit live.</p>
+      <div class="links"><a href="https://janeliascicomp.github.io/chunkmirage/browser/">Demos</a><a href="https://github.com/JaneliaSciComp/chunkmirage">Code</a></div>
+    </article>
+
+    <article class="tile" data-tl="micro-agent">
+      <a class="media" href="https://github.com/AI-HHMI/micro-agent" aria-label="micro-agent">
+        <img src="img/micro-agent.jpg" alt="micro-agent's explorer showing electron-microscopy datasets from public repositories" loading="lazy">
+      </a>
+      <h3><a href="https://github.com/AI-HHMI/micro-agent">micro-agent</a><span class="years"></span></h3>
+      <p>Finds and loads open microscopy data across public repositories (OpenOrganelle, MICrONS, FlyEM, EMPIAR, IDR and more) through one interface, ready for training models.</p>
+      <div class="links"><a href="https://github.com/AI-HHMI/micro-agent">Code</a></div>
+    </article>
+  </div>
+  <ul class="list">
+    <li data-tl="CineMap"><span class="nm"><b><a href="https://github.com/janelia-cellmap/CineMap">CineMap</a></b> <span class="tag">contributor</span></span><span class="ds">keyframed movies of Neuroglancer scenes, with orbits, sweeps and slicing, for talks and papers.</span><span class="years"></span></li>
+    <li data-tl="worldarray"><span class="nm"><b><a href="https://github.com/JaneliaSciComp/worldarray">worldarray</a></b></span><span class="ds">one correct reader and writer for Zarr, N5 and precomputed volumes in physical coordinates, <a href="https://pypi.org/project/worldarray/">on PyPI</a>.</span><span class="years"></span></li>
+  </ul>
+</section>
+
+<section id="earlier">
+  <h2>Earlier at Janelia</h2>
+  <div class="grid two">
+  <article class="tile" data-tl="COSEM analysis">
+    <a class="media" href="https://openorganelle.janelia.org/datasets/jrc_hela-2" aria-label="OpenOrganelle HeLa dataset">
+      <img src="img/cosem.jpg" alt="Segmented organelles of a whole HeLa cell from OpenOrganelle (jrc_hela-2): nucleus in blue, mitochondria in orange, endosomes in teal, inside the cell outline" loading="lazy">
+    </a>
+    <h3><a href="https://openorganelle.janelia.org">COSEM</a><span class="tag">team project</span><span class="years"></span></h3>
+    <p>Whole-cell organelle segmentation with openly shared data. I built the <a href="https://github.com/davidackerman/cosem-segmentation-analysis">Spark analysis</a> (connected components, contact sites), the meshes on the website, and tools for annotators. The meshing code became <a href="#tile-mesh-n-bone">mesh-n-bone</a>, and the analyses were later rebuilt as <a href="#tile-cellmap-analyze">cellmap-analyze</a>.</p>
+    <div class="links"><a href="https://openorganelle.janelia.org">OpenOrganelle</a><a href="https://github.com/davidackerman/cosem-segmentation-analysis">Code</a></div>
+  </article>
+  </div>
+  <ul class="list">
+    <li data-tl="DaCapo (contributor)"><span class="nm"><b><a href="https://github.com/janelia-cellmap/dacapo">DaCapo</a></b> <span class="tag">contributor</span></span><span class="ds">a framework for training segmentation models on large volumes. I worked on its web dashboard, streamlined its examples and demos, and contributed fixes.</span><span class="years"></span></li>
+    <li data-tl="Image processing pipeline"><span class="nm"><b><a href="https://github.com/JaneliaSciComp/image_processing_pipeline">Image processing pipeline</a></b></span><span class="ds">a web app scientists used to run and customize image-processing jobs on Janelia's cluster without logging in to it.</span><span class="years"></span></li>
+    <li data-tl="Fetch (MouseLight)"><span class="nm"><b><a href="https://github.com/MouseLightProject/MouseLight_Microscope_Software">Fetch (MouseLight)</a></b> <span class="tag">contributor</span></span><span class="ds">C++ control software for a microscope that images entire mouse brains, alternating imaging and sectioning.</span><span class="years"></span></li>
+    <li data-tl="EM_aligner"><span class="nm"><b><a href="https://github.com/khaledkhairy/EM_aligner">EM_aligner</a></b> <span class="tag">contributor</span></span><span class="ds">alignment diagnostics and point-match filtering for whole-brain EM alignment.</span><span class="years"></span></li>
+    <li data-tl="Spoke"><span class="nm"><b><a href="https://github.com/JaneliaSciComp/spoke">Spoke</a></b> <span class="tag">contributor</span></span><span class="ds">live display of high-channel-count neural recordings (Neuropixels).</span><span class="years"></span></li>
+    <li data-tl="WaveSurfer"><span class="nm"><b><a href="https://github.com/JaneliaSciComp/WaveSurfer">WaveSurfer</a></b> <span class="tag">contributor</span></span><span class="ds">electrophysiology acquisition software.</span><span class="years"></span></li>
+  </ul>
+</section>
+
+<section id="side">
+  <h2>Side projects</h2>
+  <div class="grid four">
+    <article class="tile" data-tl="Mars CTX Explorer">
+      <a class="media" href="https://github.com/davidackerman/mars_ctx_explorer" aria-label="Mars CTX Explorer">
+        <picture>
+          <source srcset="img/mars.jpg" media="(prefers-reduced-motion: reduce)">
+          <img src="img/mars.webp" alt="Mars CTX Explorer: zooming in from a global view of Mars to draw a box over the fretted mesas of Deuteronilus Mensae, then clicking the top distant result, which flies the map about 1,100 km to a matching mesa landscape and compares it with the query" loading="lazy">
+        </picture>
+      </a>
+      <h3><a href="https://github.com/davidackerman/mars_ctx_explorer">Mars CTX Explorer</a><span class="years"></span></h3>
+      <p>Draw a box anywhere on Mars and find the places that look like it, with DINOv3 embeddings and FAISS search.</p>
+      <div class="links"><a href="https://github.com/davidackerman/mars_ctx_explorer">Code</a></div>
+    </article>
+
+    <article class="tile" data-tl="CellDive">
+      <a class="media" href="https://davidackerman.github.io/celldive/celldive.html" aria-label="Play CellDive">
+        <img src="img/celldive-play.jpg" alt="CELLDIVE in jetpack mode inside the public HeLa cell jrc_hela-2: flying toward the nucleus and endoplasmic reticulum, with the targeting reticle locked on and the laser heating the ER white" loading="lazy">
+      </a>
+      <h3><a href="https://davidackerman.github.io/celldive/celldive.html">CellDive</a><span class="years"></span></h3>
+      <p>Fly, jetpack and walk through real cells from OpenOrganelle, right in the browser.</p>
+      <div class="links"><a href="https://davidackerman.github.io/celldive/celldive.html">Play</a><a href="https://github.com/davidackerman/celldive">Code</a></div>
+    </article>
+
+
+    <article class="tile" data-tl="Backyard Worlds">
+      <a class="media" href="https://github.com/davidackerman/backyard_worlds" aria-label="Backyard Worlds">
+        <picture>
+          <source srcset="img/backyard-worlds.jpg" media="(prefers-reduced-motion: reduce)">
+          <img src="img/backyard-worlds.webp" alt="Two WISE infrared flipbooks looping, each with a circle on the moving object the motion pipeline found; they rank second and third of 1,000 Zooniverse subjects" loading="lazy">
+        </picture>
+      </a>
+      <h3><a href="https://github.com/davidackerman/backyard_worlds">Backyard Worlds</a><span class="years"></span></h3>
+      <p>Ranking brown-dwarf and moving-object candidates in infrared sky flipbooks with DINOv3 features, in place of classifying them by hand.</p>
+      <div class="links"><a href="https://github.com/davidackerman/backyard_worlds">Code</a></div>
+    </article>
+
+    <article class="tile" data-tl="Kaggle: IceCube">
+      <a class="media" href="https://github.com/davidackerman/icecube-neutrinos-in-deep-ice" aria-label="Kaggle IceCube">
+        <img src="img/icecube.jpg" alt="A held-out IceCube event: detector pulses in 3D, with the model's predicted direction in red and the true direction in black" loading="lazy">
+      </a>
+      <h3><a href="https://github.com/davidackerman/icecube-neutrinos-in-deep-ice">Kaggle: IceCube</a><span class="years"></span></h3>
+      <p>Predicting neutrino directions from detector pulses.</p>
+      <div class="links"><a href="https://github.com/davidackerman/icecube-neutrinos-in-deep-ice">Code</a></div>
+    </article>
+  </div>
+  <ul class="list">
+  </ul>
+</section>
+
+<!--
+<section id="publications">
+  <h2>Publications</h2>
+  <ul class="list">
+    <li><span>Heinrich L., Bennett D., Ackerman D., et al. Whole-cell organelle segmentation in volume electron microscopy. <i>Nature</i> (2021).</span><span class="years">2021</span></li>
+  </ul>
+</section>
+-->
+
+<footer>© David Ackerman</footer>
+
+</main>
+
+<script>
+// Generated by tools/update_timeline.py; do not edit by hand.
+const TIMELINE = /*TIMELINE:BEGIN*/[{"name":"cellmap-flow","cat":"tools","link":"https://github.com/janelia-cellmap/cellmap-flow","first":"2024-09","last":"2026-10","commits":1665,"months":["2024-09","2024-10","2024-12","2025-01","2025-02","2025-03","2025-05","2025-08","2025-09","2026-02","2026-03","2026-04","2026-05","2026-06","2026-07","2026-08","2026-09","2026-10"]},{"name":"mesh-n-bone","cat":"tools","link":"https://github.com/janelia-cellmap/mesh-n-bone","first":"2020-12","last":"2026-10","commits":379,"months":["2020-12","2021-01","2021-03","2021-10","2021-11","2021-12","2022-01","2022-12","2023-04","2024-03","2024-08","2025-02","2025-07","2026-02","2026-03","2026-04","2026-05","2026-06","2026-07","2026-08","2026-10"]},{"name":"cellmap-analyze","cat":"tools","link":"https://github.com/janelia-cellmap/cellmap-analyze","first":"2024-05","last":"2026-10","commits":557,"months":["2024-05","2024-07","2024-08","2024-11","2025-01","2025-02","2025-03","2025-04","2025-05","2025-06","2025-07","2025-08","2025-09","2025-11","2025-12","2026-01","2026-02","2026-03","2026-04","2026-05","2026-06","2026-07","2026-08","2026-09","2026-10"]},{"name":"chunkmirage","cat":"tools","link":"https://github.com/JaneliaSciComp/chunkmirage","first":"2026-09","last":"2026-10","commits":237,"months":["2026-09","2026-10"]},{"name":"CineMap","cat":"tools","link":"https://github.com/janelia-cellmap/CineMap","first":"2026-06","last":"2026-10","commits":221,"months":["2026-06","2026-07","2026-08","2026-10"]},{"name":"worldarray","cat":"tools","link":"https://github.com/JaneliaSciComp/worldarray","first":"2026-10","last":"2026-10","commits":82,"months":["2026-10"]},{"name":"Tourguide","cat":"agents","link":"https://github.com/davidackerman/tourguide","first":"2025-12","last":"2026-10","commits":381,"months":["2025-12","2026-04","2026-05","2026-06","2026-09","2026-10"]},{"name":"micro-agent","cat":"agents","link":"https://github.com/AI-HHMI/micro-agent","first":"2026-03","last":"2026-04","commits":73,"months":["2026-03","2026-04"]},{"name":"proofreader-mcp","cat":"agents","link":"https://github.com/janelia-cellmap/proofreader-mcp","first":"2026-06","last":"2026-10","commits":55,"months":["2026-06","2026-10"]},{"name":"ask-to-mask","cat":"agents","link":"https://github.com/janelia-cellmap/ask-to-mask","first":"2026-03","last":"2026-10","commits":57,"months":["2026-03","2026-04","2026-07","2026-10"]},{"name":"DINOv3 playground","cat":"experiments","link":"https://github.com/davidackerman/dinov3_playground","first":"2025-09","last":"2026-01","commits":87,"months":["2025-09","2025-10","2025-11","2026-01"]},{"name":"ANNA","cat":"experiments","link":"https://github.com/davidackerman/ANNA","first":"2026-02","last":"2026-02","commits":7,"months":["2026-02"]},{"name":"SAM3M","cat":"experiments","link":"https://github.com/davidackerman/sam3m","first":"2026-03","last":"2026-03","commits":23,"months":["2026-03"]},{"name":"EM_aligner","cat":"earlier","link":"https://github.com/khaledkhairy/EM_aligner","first":"2017-01","last":"2022-06","commits":69,"months":["2017-01","2017-02","2017-03","2017-04","2017-05","2017-06","2017-07","2017-08","2017-09","2017-10","2018-01","2018-03","2018-10","2019-02","2019-04","2022-06"]},{"name":"WaveSurfer","cat":"earlier","link":"https://github.com/JaneliaSciComp/WaveSurfer","first":"2016-05","last":"2017-03","commits":113,"months":["2016-05","2016-06","2016-07","2016-08","2017-01","2017-03"]},{"name":"Fetch (MouseLight)","cat":"earlier","link":"https://github.com/MouseLightProject/MouseLight_Microscope_Software","first":"2016-08","last":"2020-12","commits":585,"months":["2016-08","2016-09","2016-10","2016-11","2016-12","2017-01","2017-02","2017-03","2017-04","2017-05","2017-06","2017-08","2017-09","2017-11","2017-12","2018-04","2018-07","2018-08","2018-12","2019-01","2019-04","2020-02","2020-03","2020-12"]},{"name":"Image processing pipeline","cat":"earlier","link":"https://github.com/JaneliaSciComp/image_processing_pipeline","first":"2017-10","last":"2023-09","commits":365,"months":["2017-10","2017-11","2017-12","2018-01","2018-02","2018-03","2018-04","2018-05","2018-06","2018-08","2018-09","2018-10","2018-11","2018-12","2019-01","2019-02","2019-03","2019-04","2019-05","2019-09","2019-10","2021-09","2023-08","2023-09"]},{"name":"Spoke","cat":"earlier","link":"https://github.com/JaneliaSciComp/spoke","first":"2018-12","last":"2019-08","commits":113,"months":["2018-12","2019-01","2019-02","2019-04","2019-08"]},{"name":"COSEM analysis","cat":"earlier","link":"https://github.com/davidackerman/cosem-segmentation-analysis","first":"2019-09","last":"2024-05","commits":317,"months":["2019-09","2019-10","2019-11","2019-12","2020-01","2020-02","2020-03","2020-04","2020-05","2020-06","2020-07","2020-08","2020-09","2020-10","2020-11","2021-01","2021-02","2021-03","2021-04","2021-05","2021-06","2021-11","2021-12","2022-01","2022-06","2022-07","2022-08","2022-12","2023-01","2023-02","2023-03","2023-10","2024-03","2024-05"]},{"name":"DaCapo (contributor)","cat":"earlier","link":"https://github.com/janelia-cellmap/dacapo","first":"2021-05","last":"2026-04","commits":216,"months":["2021-05","2021-06","2021-07","2021-08","2021-09","2021-11","2021-12","2022-04","2022-05","2023-06","2024-02","2024-03","2024-06","2024-07","2024-09","2024-10","2026-04"]},{"name":"Kaggle: IceCube","cat":"side","link":"https://github.com/davidackerman/icecube-neutrinos-in-deep-ice","first":"2023-01","last":"2023-02","commits":37,"months":["2023-01","2023-02"]},{"name":"Mars CTX Explorer","cat":"side","link":"https://github.com/davidackerman/mars_ctx_explorer","first":"2026-01","last":"2026-09","commits":172,"months":["2026-01","2026-03","2026-04","2026-05","2026-09"]},{"name":"Backyard Worlds","cat":"side","link":"https://github.com/davidackerman/backyard_worlds","first":"2026-01","last":"2026-09","commits":48,"months":["2026-01","2026-03","2026-04","2026-05","2026-09"]},{"name":"CellDive","cat":"side","link":"https://github.com/davidackerman/celldive","first":"2026-06","last":"2026-07","commits":20,"months":["2026-06","2026-07"]}]/*TIMELINE:END*/;
+// Commits per month, private repos and branches included (see tools/update_timeline.py).
+const ACTIVITY = /*ACTIVITY:BEGIN*/{"2016-05":25,"2016-06":48,"2016-07":26,"2016-08":52,"2016-09":166,"2016-10":86,"2016-11":114,"2016-12":22,"2017-01":25,"2017-02":11,"2017-03":13,"2017-04":15,"2017-05":20,"2017-06":31,"2017-07":3,"2017-08":16,"2017-09":16,"2017-10":16,"2017-11":16,"2017-12":15,"2018-01":17,"2018-02":23,"2018-03":42,"2018-04":10,"2018-05":47,"2018-06":36,"2018-07":4,"2018-08":22,"2018-09":2,"2018-10":36,"2018-11":57,"2018-12":83,"2019-01":31,"2019-02":45,"2019-03":27,"2019-04":55,"2019-05":29,"2019-06":18,"2019-08":19,"2019-09":31,"2019-10":25,"2019-11":29,"2019-12":8,"2020-01":28,"2020-02":23,"2020-03":7,"2020-04":16,"2020-05":17,"2020-06":11,"2020-07":34,"2020-08":11,"2020-09":5,"2020-10":8,"2020-11":6,"2020-12":4,"2021-01":28,"2021-02":9,"2021-03":25,"2021-04":31,"2021-05":22,"2021-06":21,"2021-07":24,"2021-08":18,"2021-09":13,"2021-10":89,"2021-11":46,"2021-12":24,"2022-01":2,"2022-02":63,"2022-03":18,"2022-04":33,"2022-05":44,"2022-06":5,"2022-07":30,"2022-08":24,"2022-09":17,"2022-10":9,"2022-11":13,"2022-12":8,"2023-01":39,"2023-02":17,"2023-03":16,"2023-04":18,"2023-05":15,"2023-06":28,"2023-07":23,"2023-08":17,"2023-09":29,"2023-10":12,"2023-11":7,"2023-12":5,"2024-01":23,"2024-02":89,"2024-03":90,"2024-04":16,"2024-05":29,"2024-06":31,"2024-07":25,"2024-08":46,"2024-09":28,"2024-10":12,"2024-11":8,"2024-12":8,"2025-01":47,"2025-02":118,"2025-03":58,"2025-04":98,"2025-05":79,"2025-06":61,"2025-07":61,"2025-08":27,"2025-09":89,"2025-10":74,"2025-11":81,"2025-12":155,"2026-01":148,"2026-02":117,"2026-03":236,"2026-04":324,"2026-05":433,"2026-06":438,"2026-07":87,"2026-08":117,"2026-09":916,"2026-10":1185}/*ACTIVITY:END*/;
+
+(function () {
+  const START_YEAR = 2016, END_YEAR = 2026;
+  const total = (END_YEAR - START_YEAR + 1) * 12;
+  const toIdx = (s) => { const [y, m] = s.split("-").map(Number); return (y - START_YEAR) * 12 + (m - 1); };
+  const monthName = (s) => new Date(s + "-01T00:00:00").toLocaleString("en-US", { month: "short", year: "numeric" });
+  const byName = Object.fromEntries(TIMELINE.map((r) => [r.name, r]));
+  const newest = TIMELINE.reduce((a, r) => Math.max(a, toIdx(r.last)), 0);
+  const yearsLabel = (r) => {
+    const a = r.first.slice(0, 4), b = r.last.slice(0, 4);
+    if (newest - toIdx(r.last) <= 2 && toIdx(r.last) - toIdx(r.first) > 2) return a + " – now";
+    return a === b ? a : a + " – " + b.slice(2);
+  };
+
+  // Fill in the years next to each project. "SAM3M" also covers the DINOv3 playground row.
+  document.querySelectorAll("[data-tl]").forEach((el) => {
+    const r = byName[el.dataset.tl];
+    const slot = el.querySelector(".years");
+    if (!r || !slot) return;
+    let label = yearsLabel(r);
+    if (el.dataset.tl === "SAM3M" && byName["DINOv3 playground"]) {
+      const d = byName["DINOv3 playground"];
+      label = d.first.slice(0, 4) + " – " + r.last.slice(2, 4);
+    }
+    slot.textContent = label;
+  });
+
+  // The strip: one cell per month, shaded by how many projects had commits that month.
+  const strip = document.getElementById("strip");
+  const caption = document.getElementById("strip-caption");
+  const years = document.getElementById("strip-years");
+  strip.style.gridTemplateColumns = "repeat(" + total + ", 1fr)";
+  const counts = new Array(total).fill(0);
+  if (Object.keys(ACTIVITY).length) {
+    Object.entries(ACTIVITY).forEach(([m, c]) => { const i = toIdx(m); if (i >= 0 && i < total) counts[i] = c; });
+  } else {
+    TIMELINE.forEach((r) => r.months.forEach((m) => { const i = toIdx(m); if (i >= 0 && i < total) counts[i]++; }));
+  }
+  // Quartiles of the active months, like GitHub's graph: the quietest active month is still clearly green.
+  const active = counts.filter((c) => c > 0).sort((a, b) => a - b);
+  const q = (f) => active[Math.min(active.length - 1, Math.floor(f * active.length))] || 1;
+  const cuts = [q(0.25), q(0.5), q(0.75)];
+  const cells = counts.map(() => strip.appendChild(document.createElement("i")));
+  for (let y = START_YEAR; y <= END_YEAR; y++) {
+    const s = document.createElement("span");
+    s.textContent = "'" + String(y).slice(2);
+    if ((y - START_YEAR) % 2) s.className = "minor";
+    s.style.left = (100 * ((y - START_YEAR) * 12 + 6) / total) + "%";
+    years.appendChild(s);
+  }
+
+  const touch = window.matchMedia("(hover: none)").matches;
+  const defaultCaption = "Months I've committed code since 2016. " + (touch ? "Scroll to a project to see when I worked on it." : "Point at a project to see when I worked on it.");
+
+  const LEVELS = ["", "var(--a1)", "var(--a2)", "var(--a3)", "var(--a4)"];
+  function showAll() {
+    counts.forEach((c, i) => {
+      cells[i].style.background = c ? LEVELS[1 + cuts.filter((t) => c > t).length] : "";
+    });
+    caption.textContent = defaultCaption;
+    document.querySelectorAll("[data-tl].active").forEach((el) => el.classList.remove("active"));
+  }
+
+  function show(el) {
+    const names = el.dataset.tl === "SAM3M" ? ["SAM3M", "DINOv3 playground"] : [el.dataset.tl];
+    const rows = names.map((n) => byName[n]).filter(Boolean);
+    if (!rows.length) return showAll();
+    const active = new Set(rows.flatMap((r) => r.months.map(toIdx)));
+    const lo = Math.min(...rows.map((r) => toIdx(r.first))), hi = Math.max(...rows.map((r) => toIdx(r.last)));
+    cells.forEach((cell, i) => {
+      cell.style.background = active.has(i) ? "var(--g5)" : (i >= lo && i <= hi ? "var(--g1)" : "");
+    });
+    const first = rows.reduce((a, r) => (r.first < a ? r.first : a), rows[0].first);
+    const last = rows.reduce((a, r) => (r.last > a ? r.last : a), rows[0].last);
+    const commits = rows.reduce((a, r) => a + r.commits, 0);
+    const title = el.querySelector("h3 a, b a");
+    caption.innerHTML = "";
+    const b = document.createElement("b");
+    b.textContent = title ? title.textContent : names[0];
+    caption.append(b, document.createTextNode("  " + monthName(first) + " – " + monthName(last) + " · " + commits.toLocaleString() + " commits"));
+    document.querySelectorAll("[data-tl].active").forEach((x) => x.classList.remove("active"));
+    el.classList.add("active");
+  }
+
+  const items = Array.from(document.querySelectorAll("[data-tl]"));
+  let hovered = null;
+  items.forEach((el) => {
+    el.addEventListener("mouseenter", () => { hovered = el; show(el); });
+    el.addEventListener("mouseleave", () => { hovered = null; showAll(); });
+    el.addEventListener("focusin", () => show(el));
+    el.addEventListener("focusout", () => { if (!hovered) showAll(); });
+  });
+
+  // On touch screens, highlight whichever project crosses the middle of the screen.
+  if (touch && "IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => {
+      const hit = entries.filter((e) => e.isIntersecting).map((e) => e.target)[0];
+      if (hit) show(hit);
+    }, { rootMargin: "-48% 0px -48% 0px" });
+    items.forEach((el) => io.observe(el));
+  }
+
+  const wrap = document.getElementById("strip-wrap");
+  new IntersectionObserver(([e]) => wrap.classList.toggle("stuck", e.intersectionRatio < 1), { threshold: [1], rootMargin: "-1px 0px 0px 0px" }).observe(wrap);
+
+  // Respect reduced motion: show posters instead of looping video.
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    document.querySelectorAll("video[autoplay]").forEach((v) => { v.removeAttribute("autoplay"); v.pause(); });
+  }
+
+  showAll();
+})();
+</script>
+<script>
+// Background: Conway's Game of Life on the page's 12px grid, drawn very faintly.
+// Moving the cursor (or a finger) seeds new cells; it pauses when the tab is hidden
+// and stays still for visitors who prefer reduced motion.
+(function () {
+  const canvas = document.getElementById("life");
+  const ctx = canvas && canvas.getContext("2d");
+  if (!ctx) return;
+  const CELL = 12, STEP_MS = 140, TRAIL = 6;
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let cols = 0, rows = 0, alive, next, fade, last = 0, timer = 0;
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = window.innerWidth, h = window.innerHeight;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const c = Math.ceil(w / CELL), r = Math.ceil(h / CELL);
+    const old = alive, oc = cols, or = rows;
+    cols = c; rows = r;
+    alive = new Uint8Array(c * r); next = new Uint8Array(c * r); fade = new Uint8Array(c * r);
+    if (old) for (let y = 0; y < Math.min(r, or); y++) for (let x = 0; x < Math.min(c, oc); x++) alive[y * c + x] = old[y * oc + x];
+    draw();
+  }
+
+  function seed(cx, cy, radius, p) {
+    for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy > radius * radius + 1 || Math.random() > p) continue;
+      const x = (cx + dx + cols) % cols, y = (cy + dy + rows) % rows;
+      alive[y * cols + x] = 1;
+    }
+  }
+
+  function step() {
+    for (let y = 0; y < rows; y++) {
+      const up = ((y - 1 + rows) % rows) * cols, mid = y * cols, dn = ((y + 1) % rows) * cols;
+      for (let x = 0; x < cols; x++) {
+        const l = (x - 1 + cols) % cols, r = (x + 1) % cols;
+        const n = alive[up + l] + alive[up + x] + alive[up + r] + alive[mid + l] + alive[mid + r] + alive[dn + l] + alive[dn + x] + alive[dn + r];
+        const i = mid + x, on = n === 3 || (n === 2 && alive[i]);
+        next[i] = on ? 1 : 0;
+        fade[i] = on ? 0 : alive[i] ? TRAIL : Math.max(0, fade[i] - 1);
+      }
+    }
+    const t = alive; alive = next; next = t;
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, cols * CELL, rows * CELL);
+    for (let i = 0; i < alive.length; i++) {
+      const a = alive[i] ? 0.07 : fade[i] ? 0.025 * fade[i] / TRAIL : 0;
+      if (!a) continue;
+      ctx.fillStyle = "rgba(57, 211, 83, " + a.toFixed(3) + ")";
+      ctx.fillRect((i % cols) * CELL + 2, Math.floor(i / cols) * CELL + 2, CELL - 4, CELL - 4);
+    }
+  }
+
+  function frame(t) {
+    timer = 0;
+    if (t - last >= STEP_MS) { last = t; step(); draw(); }
+    if (!document.hidden) timer = requestAnimationFrame(frame);
+  }
+
+  let lastCell = -1;
+  function onMove(clientX, clientY) {
+    const x = Math.floor(clientX / CELL), y = Math.floor(clientY / CELL), k = y * cols + x;
+    if (k === lastCell || x < 0 || y < 0 || x >= cols || y >= rows) return;
+    lastCell = k; seed(x, y, 1, 0.5);
+    if (still) draw();
+  }
+
+  resize();
+  draw();
+  window.addEventListener("resize", resize);
+  window.addEventListener("pointermove", (e) => onMove(e.clientX, e.clientY), { passive: true });
+  window.addEventListener("touchmove", (e) => { const p = e.touches[0]; if (p) onMove(p.clientX, p.clientY); }, { passive: true });
+  if (!still) {
+    timer = requestAnimationFrame(frame);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden && !timer) timer = requestAnimationFrame(frame); });
+  }
+})();
+</script>
+</body>
+</html>
