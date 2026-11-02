@@ -128,6 +128,13 @@
   .tile:hover .media::after { inset: -9px; }
   .tile .media picture { display: contents; }
   .tile .media img, .tile .media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile .media .cap {
+    position: absolute; top: 8px; pointer-events: none;
+    font-family: var(--mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--ink); background: rgba(11, 14, 12, 0.78); padding: 3px 6px;
+  }
+  .tile .media .cap.l { left: 8px; }
+  .tile .media .cap.r { left: calc(50% + 8px); }
   .tile h3 { font-size: 1.12rem; font-weight: 700; margin: 18px 0 4px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
   .tile h3 .years, ul.list li .years { font-family: var(--mono); font-size: 0.66rem; font-weight: 400; color: var(--ink-3); letter-spacing: 0.02em; }
   .tile p { margin: 0 0 10px; color: var(--ink-2); font-size: 0.98rem; }
@@ -318,6 +325,7 @@
   <article class="tile" data-tl="mesh_playground">
     <a class="media" href="https://github.com/davidackerman/mesh_playground" aria-label="mesh_playground">
       <video src="media/mesh-playground-2up.mp4" poster="media/mesh-playground-2up-poster.jpg" muted loop playsinline autoplay preload="metadata"></video>
+      <span class="cap l">Faces of one cell</span><span class="cap r">Whole organelles</span>
     </a>
     <h3><a href="https://github.com/davidackerman/mesh_playground">mesh_playground</a><span class="years"></span></h3>
     <p>Sorts a cell's organelles from a few labeled by hand: label some meshes in Neuroglancer, and a classifier trained on their shapes (volume, curvature, thickness) predicts the rest. Shown in 2022: labeling the faces of one cell's surface (left), then the mitochondria of a public HeLa cell (right).</p>
