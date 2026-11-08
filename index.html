@@ -583,7 +583,7 @@ const ACTIVITY = /*ACTIVITY:BEGIN*/{"2016-05":25,"2016-06":48,"2016-07":26,"2016
   function draw() {
     ctx.clearRect(0, 0, cols * CELL, rows * CELL);
     for (let i = 0; i < alive.length; i++) {
-      const a = alive[i] ? 0.07 : fade[i] ? 0.025 * fade[i] / TRAIL : 0;
+      const a = alive[i] ? 0.11 : fade[i] ? 0.04 * fade[i] / TRAIL : 0;
       if (!a) continue;
       ctx.fillStyle = "rgba(57, 211, 83, " + a.toFixed(3) + ")";
       ctx.fillRect((i % cols) * CELL + 2, Math.floor(i / cols) * CELL + 2, CELL - 4, CELL - 4);
